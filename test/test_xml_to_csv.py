@@ -1,11 +1,8 @@
 from unittest import TestCase
-# TODO: imports for tests go local or at top?
-from src.xml_parse_to_csv import read_xml_to_tree
+from copy import deepcopy
 import xml.etree.ElementTree as ET
 
-# class XmlTestCase(TestCase):
-#     def setUp(self):
-#         self.xml_tree
+from src.xml_parse_to_csv import read_xml_to_tree, find_all_rec
 
 
 class TestImportXML(TestCase):
@@ -17,15 +14,29 @@ class TestImportXML(TestCase):
     def test_read_xml_to_tree(self):
         root = self.tree.getroot()
 
-        # check that a tree is returned
+        # basic xml tree structure inserts
         self.assertIsInstance(self.tree, ET.ElementTree)
-
-        # check that the root is has tag catalog
-        self.assertTrue(root.tag == 'CATALOG')
-
-        # check that there are X children
-        self.assertTrue(len(list(root)) == 26)
+        self.assertEqual(root.tag, 'CATALOG')
+        self.assertEqual(len(list(root)), 26)
 
         # check that each of the children are parsing all of their children
         for child in root:
-            self.assertTrue(len(list(child)) == 6)
+            self.assertEqual(len(list(child)), 6)
+
+    def test_find_all_rec(self):
+        # create an instance of the tree with duplicate tags in tree for testing find all rec method
+        tree_with_duplicate_tag = deepcopy(self.tree)
+        root = tree_with_duplicate_tag.getroot()
+
+        # delete all children except the first one
+        children = list(root)
+        for i in range(1, len(children)):
+            root.remove(children[i])
+
+        # add a copy of the only child of tree to each grandchild
+        add_to = list(root)[0]
+        to_add = deepcopy(add_to)
+        for child in add_to:
+            child.append(to_add)
+
+        self.assertEqual(len(find_all_rec(root, "CD")), 7)
