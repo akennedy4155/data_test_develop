@@ -3,9 +3,11 @@ from copy import deepcopy
 import xml.etree.ElementTree as ET
 
 # TODO: refactor all of these imports
-from src import read_xml_to_tree, find_all_rec, extract_element_basic, extract_element_list
+import src
+from src import read_xml_to_tree, find_all_rec, extract_element_basic, extract_element_list, validate_extract_element
 
 
+# TODO: on assert equals, i got the expected and actual backwards for most of these
 class TestXMLToCSV(TestCase):
     # TODO: TearDown
     def setUp(self):
@@ -42,9 +44,11 @@ class TestXMLToCSV(TestCase):
             self.assertEqual(len(list(child)), 6)
 
     def test_find_all_rec(self):
+        self.assertEqual(len(find_all_rec(self.tree.getroot(), 'TITLE')), 26)
         self.assertEqual(len(find_all_rec(self.tree_with_duplicate_tag.getroot(), "CD")), 7)
 
 
+# TODO: can refactor 'parent = find_all_rec(self.tree.getroot(), 'CD')[0]' into setup
 class TestExtractElement(TestCase):
     # Sauce: https://stackoverflow.com/questions/8672754/how-to-show-the-error-messages-caught-by-assertraises-in-unittest-in-python2-7
     def assertRaisesWithMessage(self, msg, func, *args, **kwargs):
@@ -71,17 +75,16 @@ class TestExtractElement(TestCase):
         for i in range(3):
             add_to.append(deepcopy(to_add))
 
-        print(ET.tostring(root))
+        print(ET.tostring(self.tree.getroot()))
 
     def test_extract_element_success(self):
         parent = find_all_rec(self.tree.getroot(), 'CD')[0]
-
         # Basic
-        self.assertEqual(extract_element_basic(parent, 'TITLE'), 'Empire Burlesque')
+        self.assertEqual(extract_element_basic(parent, 'TITLE').text, 'Empire Burlesque')
 
         # List
         compare = ['TEST', 'TEST', 'TEST']
-        self.assertEqual(extract_element_list(parent, 'ARTIST', 'SUBARTIST'))
+        self.assertEqual([ele.text for ele in extract_element_list(parent, 'ARTIST', 'SUBARTIST')], compare)
 
     def test_extract_element_fail_not_exists(self):
         # Tests failure case of both extract element methods
@@ -92,7 +95,7 @@ class TestExtractElement(TestCase):
         self.assertRaisesWithMessage('Element does not exist.', extract_element_basic, parent, 'NOT_THERE')
 
         # List
-        self.assertRaisesWithMessage('Element does not exist.', extract_element_list, parent, 'NOT_THERE')
+        self.assertRaisesWithMessage('Element does not exist.', extract_element_list, parent, 'NOT_THERE', 'STILL_NOT_THERE')
 
     def test_extract_element_fail_duplicate_key(self):
         # Tests failure case of both extract element methods
@@ -103,14 +106,25 @@ class TestExtractElement(TestCase):
         self.assertRaisesWithMessage('Duplicate extraction tag.', extract_element_basic, parent, 'SUBARTIST')
 
         # List
-        self.assertRaisesWithMessage('Duplicate extraction tag.', extract_element_list, parent, 'SUBARTIST')
+        self.assertRaisesWithMessage('Duplicate extraction tag.', extract_element_list, parent, 'SUBARTIST', 'SUBSUBARTIST')
 
     def test_extract_element_basic_failure_not_basic(self):
         # Failure: sub-element is not type basic (text field, leaf node)
         parent = find_all_rec(self.tree.getroot(), 'CD')[0]
-        self.assertRaisesWithMessage('Duplicate extraction tag.', extract_element_basic, parent, 'ARTIST')
+        self.assertRaisesWithMessage('Element not basic type.', extract_element_basic, parent, 'ARTIST')
 
     def test_extract_element_failure_not_list(self):
         # Failure: sub-element is not type list ()
         parent = find_all_rec(self.tree.getroot(), 'CD')[0]
-        self.assertRaisesWithMessage('Duplicate extraction tag.', extract_element_list, parent, 'TITLE')
+        self.assertRaisesWithMessage('Element not list type.', extract_element_list, self.tree.getroot(), 'CD', 'TRACK')
+
+    def test_validate_extract_element(self):
+        parent = find_all_rec(self.tree.getroot(), 'CD')[0]
+
+        # Does not exist
+        found_elements = find_all_rec(parent, 'NOT_THERE')
+        self.assertRaisesWithMessage('Element does not exist.', validate_extract_element, found_elements)
+
+        # Duplicate tag
+        found_elements = find_all_rec(parent, 'SUBARTIST')
+        self.assertRaisesWithMessage('Duplicate extraction tag.', validate_extract_element, found_elements)
