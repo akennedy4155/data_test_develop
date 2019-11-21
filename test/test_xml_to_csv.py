@@ -7,6 +7,7 @@ import src
 from src import read_xml_to_tree, find_all_rec, extract_element_basic, extract_element_list, validate_extract_element
 
 
+# TODO: all of this assumes that the client is connected to the internet. Could add some functionality to check this
 # TODO: on assert equals, i got the expected and actual backwards for most of these
 class TestXMLToCSV(TestCase):
     # TODO: TearDown
@@ -14,7 +15,7 @@ class TestXMLToCSV(TestCase):
         # read the xml from url to tree
         url = 'https://www.w3schools.com/xml/cd_catalog.xml'
         self.tree = read_xml_to_tree(url)
-        print(ET.tostring(self.tree.getroot()))
+        # print(ET.tostring(self.tree.getroot()))
 
         # create an instance of the tree with duplicate tags in tree for testing find all rec method
         self.tree_with_duplicate_tag = deepcopy(self.tree)
@@ -30,6 +31,7 @@ class TestXMLToCSV(TestCase):
         to_add = deepcopy(add_to)
         for child in add_to:
             child.append(to_add)
+        # print(ET.tostring(self.tree.getroot()))
 
     def test_read_xml_to_tree(self):
         root = self.tree.getroot()
@@ -46,6 +48,60 @@ class TestXMLToCSV(TestCase):
     def test_find_all_rec(self):
         self.assertEqual(len(find_all_rec(self.tree.getroot(), 'TITLE')), 26)
         self.assertEqual(len(find_all_rec(self.tree_with_duplicate_tag.getroot(), "CD")), 7)
+
+    def test_bulk_extract(self):
+        test_tree = deepcopy(self.tree)
+        root = test_tree.getroot()
+        children = list(root)
+
+        # add a list element to the first three to test that functionality
+        for child_i in range(3):
+            to_add = ET.Element('SUBARTIST')
+            to_add.text = 'TEST'
+            add_to = children[child_i].find('ARTIST')
+            for _ in range(child_i):
+                add_to.append(deepcopy(to_add))
+
+        # truncate to 3 children
+        for i in range(3, len(children)):
+            root.remove(children[i])
+
+        expected = [
+            {
+                "TITLE": "Empire Burlesque",
+                "ARTIST": ""
+            },
+            {
+                "TITLE": "Hide your heart",
+                "ARTIST": "TEST"
+            },
+            {
+                "TITLE": "Greatest Hits",
+                "ARTIST": "TEST, TEST"
+            }
+        ]
+
+        actual = src.bulk_extract(
+            test_tree,
+            "CD",
+            elements_basic=["TITLE"],
+            elements_list=[{"list_tag": "ARTIST", "list_element_tag": "SUBARTIST"}]
+        ).values()
+
+        # TODO: comment and explain this
+        expected = list(expected)  # make a mutable copy
+        try:
+            for elem in actual:
+                expected.remove(elem)
+        except ValueError:
+            return False
+        return not expected
+
+        self.assertFalse(expected)
+
+        # TODO: more error testing here
+        # assert exception for arguments that aren't valid
+        self.assertRaises(Exception, src.bulk_extract, test_tree, "CD", basic=["TITLE"], list=["ARTIST"])
 
 
 # TODO: can refactor 'parent = find_all_rec(self.tree.getroot(), 'CD')[0]' into setup
@@ -75,8 +131,6 @@ class TestExtractElement(TestCase):
         for i in range(3):
             add_to.append(deepcopy(to_add))
 
-        print(ET.tostring(self.tree.getroot()))
-
     def test_extract_element_success(self):
         parent = find_all_rec(self.tree.getroot(), 'CD')[0]
         # Basic
@@ -95,7 +149,8 @@ class TestExtractElement(TestCase):
         self.assertRaisesWithMessage('Element does not exist.', extract_element_basic, parent, 'NOT_THERE')
 
         # List
-        self.assertRaisesWithMessage('Element does not exist.', extract_element_list, parent, 'NOT_THERE', 'STILL_NOT_THERE')
+        self.assertRaisesWithMessage('Element does not exist.', extract_element_list, parent, 'NOT_THERE',
+                                     'STILL_NOT_THERE')
 
     def test_extract_element_fail_duplicate_key(self):
         # Tests failure case of both extract element methods
@@ -106,7 +161,8 @@ class TestExtractElement(TestCase):
         self.assertRaisesWithMessage('Duplicate extraction tag.', extract_element_basic, parent, 'SUBARTIST')
 
         # List
-        self.assertRaisesWithMessage('Duplicate extraction tag.', extract_element_list, parent, 'SUBARTIST', 'SUBSUBARTIST')
+        self.assertRaisesWithMessage('Duplicate extraction tag.', extract_element_list, parent, 'SUBARTIST',
+                                     'SUBSUBARTIST')
 
     def test_extract_element_basic_failure_not_basic(self):
         # Failure: sub-element is not type basic (text field, leaf node)

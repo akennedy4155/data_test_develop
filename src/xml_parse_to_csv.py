@@ -67,8 +67,6 @@ def extract_element_list(element, list_tag, list_element_tag):
 
     # failure: element is not list type
     possible_list = extract_elements[0]
-    if not list(possible_list):  # validate that the possible list element is not basic
-        raise Exception('Element not list type.')
 
     return_list = list(possible_list)
     for ele in return_list:  # validate that list element is basic type and ele tag matches
@@ -77,7 +75,6 @@ def extract_element_list(element, list_tag, list_element_tag):
 
     # success!
     return return_list
-
 
 
 def validate_extract_element(found_elements):
@@ -96,3 +93,40 @@ def validate_extract_element(found_elements):
     # failure: multiple elements with same tag
     if len(found_elements) > 1:
         raise Exception('Duplicate extraction tag.')
+
+
+# TODO: make the assumption that one row element will not be inside another row element
+# this means that in this problem, a Listing element will not be inside another Listing element
+# This needs to be more robust... What happens if there are nested elements and we want to get information about both of
+# them for a row?
+
+# TODO: default behavior turns a list into a string with elements sep by commas.  Could add functionality to make this variable later.
+def bulk_extract(tree, row_tag, elements_basic=[], elements_list=[]):
+    """
+    Creates a dictionary with keys that represent the parent element of a row and values that are the columns in that row
+    Preparation for loading into a pandas DF
+    Structure:
+    {
+        key (row_element): value (
+            {
+                key (sub-element tag): value (element text)
+            }
+        )
+    }
+    :param tree: xml tree to load all this information from
+    :param row_tag: tag for the elements to extract from
+    :param elements_basic: list of tags for the basic elements to extract
+    :param elements_list: list of tags for the list elements to extract
+    :return: Dict prepared for DF load
+    """
+    row_elements = find_all_rec(tree.getroot(), row_tag)
+    df_dict = {}
+    for element in row_elements:
+        df_row_entry = {}
+        for basics in elements_basic:
+            df_row_entry[basics] = extract_element_basic(element, basics).text
+        for lists in elements_list:
+            df_row_entry[lists["list_tag"]] = ", ".join([ele.text for ele in extract_element_list(element, lists["list_tag"], lists["list_element_tag"])])
+        df_dict[element] = df_row_entry
+    return df_dict
+
