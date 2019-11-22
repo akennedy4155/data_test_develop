@@ -1,3 +1,4 @@
+# Alex Kennedy 11-22-19
 from src.xml_parse_to_csv import read_xml_to_tree, bulk_extract, stringify_bulk_extract
 import pandas as pd
 import datetime
@@ -10,6 +11,7 @@ tree = read_xml_to_tree(url)
 # bulk extract the columns that we want
 row_tag = "Listing"
 
+# Some fields use dot notation to represent ancestry of the element, used to resolve AmbiguousElement exceptions
 basic_fields = [
     "MlsId",
     "MlsName",
@@ -48,8 +50,6 @@ df["year"] = df["DateListed"].apply(datetime.datetime.strptime, args=('%Y-%m-%d 
 df["year"] = df["year"].apply(lambda x: x.year)
 df = df[df["year"] == 2016]
 
-print(df.columns)
-
 # filter description "and"
 df["description_and"] = df["BasicDetails.Description"].apply(lambda x: bool(re.search(r".*and.*", x)))
 df = df[df["description_and"]]
@@ -61,4 +61,4 @@ df.sort_values(by=["DateListed"], inplace=True)
 order = basic_fields + [field["list_tag"] for field in list_fields]
 df = df[order]
 
-df.to_csv('test.csv', index=False)
+df.to_csv('zillow_data.csv', index=False)
