@@ -46,7 +46,12 @@ def extract_basic(element, tag):
     current = element
     for sub_tag in ancestry:
         extract_elements = find_all_rec(current, sub_tag)
-        validate_extract_element(extract_elements)  # validate exists and non-duplicate
+        try:
+            validate_extract_element(extract_elements)  # validate exists and non-duplicate
+        except MissingElement:  # default missing element behavior return blank element
+            blank = ET.Element("Blank")
+            blank.text = ""
+            return blank
         current = extract_elements[0]
 
     # failure: element is not basic type
@@ -72,7 +77,12 @@ def extract_list(element, list_tag, list_element_tag):
     current = element
     for sub_tag in ancestry:
         extract_elements = find_all_rec(current, sub_tag)
-        validate_extract_element(extract_elements)  # validate exists and non-duplicate
+        try:
+            validate_extract_element(extract_elements)  # validate exists and non-duplicate
+        except MissingElement:  # default missing element behavior return blank element
+            blank = ET.Element("Blank")
+            blank.text = ""
+            return blank
         current = extract_elements[0]
 
     # failure: element is not list type
@@ -104,7 +114,7 @@ def validate_extract_element(found_elements):
     if len(found_elements) > 1:
         raise AmbiguousElement("{}".format(found_elements[0].tag))
 
-
+# TODO: missing element defaults to return empty string
 # TODO: make the assumption that one row element will not be inside another row element
 # this means that in this problem, a Listing element will not be inside another Listing element
 # This needs to be more robust... What happens if there are nested elements and we want to get information about both of
