@@ -81,13 +81,12 @@ class TestXMLToCSV(TestCase):
         ]
 
         actual = xmltocsv.bulk_extract(
-            test_tree,
+            root,
             "CD",
             elements_basic=["TITLE"],
             elements_list=[{"list_tag": "ARTIST", "list_element_tag": "SUBARTIST"}]
         ).values()
         actual = [xmltocsv.stringify_bulk_extract(row_dict) for row_dict in actual]
-        print(pprint(actual))
         # TODO: comment and explain this
         expected = list(expected)  # make a mutable copy
         expected_equals_actual = True
@@ -133,14 +132,41 @@ class TestExtractElement(TestCase):
         for i in range(3):
             add_to.append(deepcopy(to_add))
 
+    # TODO: add more layers of ancestry testing
     def test_extract_element_success(self):
-        parent = xmltocsv.find_all_rec(self.tree.getroot(), 'CD')[0]
+        parent_1LA = xmltocsv.find_all_rec(self.tree.getroot(), 'CD')[0]
+
+        # build first test for 2 level ancestry <Top><Mid><Bot>real</Bot></Mid><Bot>fake</Bot></Top>
+        parent_2LA_a = ET.Element("Top")
+        ET.SubElement(parent_2LA_a, "Mid")
+        bot_real = ET.Element("Bot")
+        bot_real.text = "real"
+        parent_2LA_a.find("Mid").append(bot_real)
+        bot_fake = ET.Element("Bot")
+        bot_fake.text = "decoy"
+        parent_2LA_a.append(bot_fake)
+
+        # build second test for 2 level ancestry <Top><Mid><Bot>real</Bot></Mid><Mid2><Bot>fake</Bot></Mid2></Top>
+        parent_2LA_b = ET.Element("Top")
+        ET.SubElement(parent_2LA_b, "Mid")
+        ET.SubElement(parent_2LA_b, "Mid2")
+        bot_real = ET.Element("Bot")
+        bot_real.text = "real"
+        parent_2LA_b.find("Mid").append(bot_real)
+        bot_fake = ET.Element("Bot")
+        bot_fake.text = "decoy"
+        parent_2LA_b.find("Mid2").append(bot_fake)
+
         # Basic
-        self.assertEqual(xmltocsv.extract_basic(parent, 'TITLE').text, 'Empire Burlesque')
+        # 1 level ancestry
+        self.assertEqual(xmltocsv.extract_basic(parent_1LA, 'TITLE').text, 'Empire Burlesque')
+        # 2 level ancestry
+        self.assertEqual(xmltocsv.extract_basic(parent_2LA_a, 'Mid.Bot').text, 'real')
+        self.assertEqual(xmltocsv.extract_basic(parent_2LA_b, 'Mid2.Bot').text, 'decoy')
 
         # List
         compare = ['TEST', 'TEST', 'TEST']
-        self.assertEqual([ele.text for ele in xmltocsv.extract_list(parent, 'ARTIST', 'SUBARTIST')], compare)
+        self.assertEqual([ele.text for ele in xmltocsv.extract_list(parent_1LA, 'ARTIST', 'SUBARTIST')], compare)
 
     def test_extract_element_fail_not_exists(self):
         # Tests failure case of both extract element methods

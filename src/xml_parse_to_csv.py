@@ -1,3 +1,5 @@
+# TODO: change to python 2.7 and run all test cases
+
 import xml.etree.ElementTree as ET
 import urllib2
 from copy import deepcopy
@@ -40,13 +42,17 @@ def extract_basic(element, tag):
     :param tag: Tag of element to extract
     :return: Extracted element as a string
     """
-    extract_elements = find_all_rec(element, tag)
-    validate_extract_element(extract_elements)  # validate exists and non-duplicate
+    ancestry = tag.split('.')
+    current = element
+    for sub_tag in ancestry:
+        extract_elements = find_all_rec(current, sub_tag)
+        validate_extract_element(extract_elements)  # validate exists and non-duplicate
+        current = extract_elements[0]
 
     # failure: element is not basic type
-    return_element = extract_elements[0]
+    return_element = current
     if list(return_element):  # if element has children, then not basic type
-        raise WrongElementType()
+        raise WrongElementType("Expected 'basic'.")
 
     # success!
     return return_element
@@ -92,7 +98,7 @@ def validate_extract_element(found_elements):
 
     # failure: multiple elements with same tag
     if len(found_elements) > 1:
-        raise AmbiguousElement()
+        raise AmbiguousElement("{}".format(found_elements[0].tag))
 
 
 # TODO: make the assumption that one row element will not be inside another row element
@@ -101,7 +107,8 @@ def validate_extract_element(found_elements):
 # them for a row?
 
 # TODO: default behavior turns a list into a string with elements sep by commas.  Could add functionality to make this variable later.
-def bulk_extract(tree, row_tag, elements_basic=[], elements_list=[]):
+# TODO: refactor
+def bulk_extract(root, row_tag, elements_basic=[], elements_list=[]):
     """
     Creates a dictionary with keys that represent the parent element of a row and values that are the columns in that row
     Preparation for loading into a pandas DF
@@ -113,13 +120,13 @@ def bulk_extract(tree, row_tag, elements_basic=[], elements_list=[]):
             }
         )
     }
-    :param tree: xml tree to load all this information from
+    :param root: xml tree to load all this information from
     :param row_tag: tag for the elements to extract from
     :param elements_basic: list of tags for the basic elements to extract
     :param elements_list: list of tags for the list elements to extract
     :return: Dict prepared for DF load
     """
-    row_elements = find_all_rec(tree.getroot(), row_tag)
+    row_elements = find_all_rec(root, row_tag)
     df_dict = {}
     for element in row_elements:
         df_row_entry = {
