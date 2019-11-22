@@ -1,5 +1,8 @@
 import xml.etree.ElementTree as ET
 import urllib2
+from copy import deepcopy
+
+from exceptions import AmbiguousElement, MissingElement, WrongElementType
 
 
 def read_xml_to_tree(url):
@@ -13,13 +16,13 @@ def read_xml_to_tree(url):
 
 
 def find_all_rec(element, tag):
-    # TODO: could make this into a generator?
     """
     Recursively find all elements with tag within element
     :param element: Element to search
     :param tag: Tag to search for
     :return: List of all sub-elements that have the tag
     """
+    # TODO: could make this a generator
     matches = []
     for child in list(element):
         if child.tag == tag:
@@ -28,11 +31,8 @@ def find_all_rec(element, tag):
     return matches
 
 
-# TODO: document exceptions for extract element
-# TODO: add more element types that we can extract besides basic and list
-# TODO: custom exceptions for the failure cases
-# TODO: better error messages for the failure cases
-def extract_element_basic(element, tag):
+# TODO: add functionality for other element types
+def extract_basic(element, tag):
     """
     Extract a basic type (text field, leaf node) sub-element from parent with given tag
 
@@ -46,13 +46,13 @@ def extract_element_basic(element, tag):
     # failure: element is not basic type
     return_element = extract_elements[0]
     if list(return_element):  # if element has children, then not basic type
-        raise Exception('Element not basic type.')
+        raise WrongElementType()
 
     # success!
     return return_element
 
 
-def extract_element_list(element, list_tag, list_element_tag):
+def extract_list(element, list_tag, list_element_tag):
     """
     Extract a list type (internal node, all children basic type) sub-element from parent with given list_tag and
     elements having list_element_tag
@@ -71,7 +71,7 @@ def extract_element_list(element, list_tag, list_element_tag):
     return_list = list(possible_list)
     for ele in return_list:  # validate that list element is basic type and ele tag matches
         if ele.tag != list_element_tag or list(ele):
-            raise Exception('Element not list type.')
+            raise WrongElementType("Expected 'List'")
 
     # success!
     return return_list
@@ -88,11 +88,11 @@ def validate_extract_element(found_elements):
     """
     # failure: element with tag doesn't exist
     if not found_elements:
-        raise Exception('Element does not exist.')
+        raise MissingElement()
 
     # failure: multiple elements with same tag
     if len(found_elements) > 1:
-        raise Exception('Duplicate extraction tag.')
+        raise AmbiguousElement()
 
 
 # TODO: make the assumption that one row element will not be inside another row element
@@ -122,11 +122,40 @@ def bulk_extract(tree, row_tag, elements_basic=[], elements_list=[]):
     row_elements = find_all_rec(tree.getroot(), row_tag)
     df_dict = {}
     for element in row_elements:
-        df_row_entry = {}
-        for basics in elements_basic:
-            df_row_entry[basics] = extract_element_basic(element, basics).text
+        df_row_entry = {
+            "basics": {},
+            "lists": {}
+        }
+        for basic in elements_basic:
+            df_row_entry["basics"][basic] = extract_basic(element, basic)
         for lists in elements_list:
-            df_row_entry[lists["list_tag"]] = ", ".join([ele.text for ele in extract_element_list(element, lists["list_tag"], lists["list_element_tag"])])
+            df_row_entry["lists"][lists["list_tag"]] = extract_list(element, lists["list_tag"], lists["list_element_tag"])
         df_dict[element] = df_row_entry
     return df_dict
 
+
+# TODO: docstring
+def stringify_bulk_extract(extract_row):
+    a_copy = deepcopy(extract_row)
+
+    # extract text from basic elements
+    bel_dict = a_copy["basics"]
+    for tag in bel_dict:
+        bel_dict[tag] = bel_dict[tag].text
+
+    # extract text from list elements and join with comma according to project requirements
+    lel_dict = a_copy["lists"]
+    for tag in lel_dict:
+        for i in range(len(lel_dict[tag])):
+            lel_dict[tag][i] = lel_dict[tag][i].text
+        lel_dict[tag] = ", ".join(lel_dict[tag])
+
+    # remove top level of nested dictionary and compress basics and lists
+    # {'basics': {'TITLE': 'Greatest Hits'}, 'lists': {'ARTIST': 'TEST, TEST'}} ->
+    # {'TITLE': 'Greatest Hits', 'ARTIST': 'TEST, TEST'}
+    compressed = {}
+    for el_dict in a_copy.values():
+        for key in el_dict:
+            compressed[key] = el_dict[key]
+
+    return compressed
