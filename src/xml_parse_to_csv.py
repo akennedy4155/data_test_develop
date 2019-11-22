@@ -68,11 +68,15 @@ def extract_list(element, list_tag, list_element_tag):
     :param list_element_tag:
     :return: Extracted element as a list
     """
-    extract_elements = find_all_rec(element, list_tag)
-    validate_extract_element(extract_elements)  # validate exists and non-duplicate
+    ancestry = list_tag.split('.')
+    current = element
+    for sub_tag in ancestry:
+        extract_elements = find_all_rec(current, sub_tag)
+        validate_extract_element(extract_elements)  # validate exists and non-duplicate
+        current = extract_elements[0]
 
     # failure: element is not list type
-    possible_list = extract_elements[0]
+    possible_list = current
 
     return_list = list(possible_list)
     for ele in return_list:  # validate that list element is basic type and ele tag matches
