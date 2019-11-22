@@ -1,10 +1,9 @@
+from pprint import pprint
 from unittest import TestCase
 from copy import deepcopy
 import xml.etree.ElementTree as ET
-
-# TODO: refactor all of these imports
-import src
-from src import read_xml_to_tree, find_all_rec, extract_element_basic, extract_element_list, validate_extract_element
+from src.exceptions import MissingElement, AmbiguousElement, WrongElementType
+import src.xml_parse_to_csv as xmltocsv
 
 
 # TODO: all of this assumes that the client is connected to the internet. Could add some functionality to check this
@@ -14,7 +13,7 @@ class TestXMLToCSV(TestCase):
     def setUp(self):
         # read the xml from url to tree
         url = 'https://www.w3schools.com/xml/cd_catalog.xml'
-        self.tree = read_xml_to_tree(url)
+        self.tree = xmltocsv.read_xml_to_tree(url)
         # print(ET.tostring(self.tree.getroot()))
 
         # create an instance of the tree with duplicate tags in tree for testing find all rec method
@@ -46,8 +45,8 @@ class TestXMLToCSV(TestCase):
             self.assertEqual(len(list(child)), 6)
 
     def test_find_all_rec(self):
-        self.assertEqual(len(find_all_rec(self.tree.getroot(), 'TITLE')), 26)
-        self.assertEqual(len(find_all_rec(self.tree_with_duplicate_tag.getroot(), "CD")), 7)
+        self.assertEqual(len(xmltocsv.find_all_rec(self.tree.getroot(), 'TITLE')), 26)
+        self.assertEqual(len(xmltocsv.find_all_rec(self.tree_with_duplicate_tag.getroot(), "CD")), 7)
 
     def test_bulk_extract(self):
         test_tree = deepcopy(self.tree)
@@ -81,44 +80,47 @@ class TestXMLToCSV(TestCase):
             }
         ]
 
-        actual = src.bulk_extract(
+        actual = xmltocsv.bulk_extract(
             test_tree,
             "CD",
             elements_basic=["TITLE"],
             elements_list=[{"list_tag": "ARTIST", "list_element_tag": "SUBARTIST"}]
         ).values()
-
+        actual = [xmltocsv.stringify_bulk_extract(row_dict) for row_dict in actual]
+        print(pprint(actual))
         # TODO: comment and explain this
         expected = list(expected)  # make a mutable copy
+        expected_equals_actual = True
         try:
             for elem in actual:
                 expected.remove(elem)
         except ValueError:
-            return False
-        return not expected
+            expected_equals_actual = False
+        if expected:
+            expected_equals_actual = False
 
-        self.assertFalse(expected)
+        self.assertTrue(expected_equals_actual)
 
         # TODO: more error testing here
         # assert exception for arguments that aren't valid
-        self.assertRaises(Exception, src.bulk_extract, test_tree, "CD", basic=["TITLE"], list=["ARTIST"])
+        self.assertRaises(Exception, xmltocsv.bulk_extract, test_tree, "CD", basic=["TITLE"], list=["ARTIST"])
 
 
 # TODO: can refactor 'parent = find_all_rec(self.tree.getroot(), 'CD')[0]' into setup
 class TestExtractElement(TestCase):
-    # Sauce: https://stackoverflow.com/questions/8672754/how-to-show-the-error-messages-caught-by-assertraises-in-unittest-in-python2-7
-    def assertRaisesWithMessage(self, msg, func, *args, **kwargs):
-        try:
-            func(*args, **kwargs)
-            self.assertFail()
-        except Exception as inst:
-            self.assertEqual(inst.message, msg)
+    # # Sauce: https://stackoverflow.com/questions/8672754/how-to-show-the-error-messages-caught-by-assertraises-in-unittest-in-python2-7
+    # def assertRaisesWithMessage(self, msg, func, *args, **kwargs):
+    #     try:
+    #         func(*args, **kwargs)
+    #         self.assertFail()
+    #     except Exception as inst:
+    #         self.assertEqual(inst.message, msg)
 
     # TODO: Tear Down
     def setUp(self):
         # create CD catalog with 1 CD for easier testing
         url = 'https://www.w3schools.com/xml/cd_catalog.xml'
-        self.tree = read_xml_to_tree(url)
+        self.tree = xmltocsv.read_xml_to_tree(url)
         root = self.tree.getroot()
         children = list(root)
         for i in range(1, len(children)):
@@ -127,60 +129,57 @@ class TestExtractElement(TestCase):
         # create a list element for testing
         to_add = ET.Element('SUBARTIST')
         to_add.text = 'TEST'
-        add_to = find_all_rec(root, 'ARTIST')[0]
+        add_to = xmltocsv.find_all_rec(root, 'ARTIST')[0]
         for i in range(3):
             add_to.append(deepcopy(to_add))
 
     def test_extract_element_success(self):
-        parent = find_all_rec(self.tree.getroot(), 'CD')[0]
+        parent = xmltocsv.find_all_rec(self.tree.getroot(), 'CD')[0]
         # Basic
-        self.assertEqual(extract_element_basic(parent, 'TITLE').text, 'Empire Burlesque')
+        self.assertEqual(xmltocsv.extract_basic(parent, 'TITLE').text, 'Empire Burlesque')
 
         # List
         compare = ['TEST', 'TEST', 'TEST']
-        self.assertEqual([ele.text for ele in extract_element_list(parent, 'ARTIST', 'SUBARTIST')], compare)
+        self.assertEqual([ele.text for ele in xmltocsv.extract_list(parent, 'ARTIST', 'SUBARTIST')], compare)
 
     def test_extract_element_fail_not_exists(self):
         # Tests failure case of both extract element methods
         # Failure: Sub-element with tag does not exist within parent element
-        parent = find_all_rec(self.tree.getroot(), 'CD')[0]
+        parent = xmltocsv.find_all_rec(self.tree.getroot(), 'CD')[0]
 
         # Basic
-        self.assertRaisesWithMessage('Element does not exist.', extract_element_basic, parent, 'NOT_THERE')
+        self.assertRaises(MissingElement, xmltocsv.extract_basic, parent, 'NOT_THERE')
 
         # List
-        self.assertRaisesWithMessage('Element does not exist.', extract_element_list, parent, 'NOT_THERE',
-                                     'STILL_NOT_THERE')
+        self.assertRaises(MissingElement, xmltocsv.extract_list, parent, 'NOT_THERE', 'STILL_NOT_THERE')
 
     def test_extract_element_fail_duplicate_key(self):
         # Tests failure case of both extract element methods
         # Failure: Multiple sub-elements found with tag within parent element
-        parent = find_all_rec(self.tree.getroot(), 'CD')[0]
+        parent = xmltocsv.find_all_rec(self.tree.getroot(), 'CD')[0]
 
         # Basic
-        self.assertRaisesWithMessage('Duplicate extraction tag.', extract_element_basic, parent, 'SUBARTIST')
+        self.assertRaises(AmbiguousElement, xmltocsv.extract_basic, parent, 'SUBARTIST')
 
         # List
-        self.assertRaisesWithMessage('Duplicate extraction tag.', extract_element_list, parent, 'SUBARTIST',
-                                     'SUBSUBARTIST')
+        self.assertRaises(AmbiguousElement, xmltocsv.extract_list, parent, 'SUBARTIST', 'SUBSUBARTIST')
 
-    def test_extract_element_basic_failure_not_basic(self):
-        # Failure: sub-element is not type basic (text field, leaf node)
-        parent = find_all_rec(self.tree.getroot(), 'CD')[0]
-        self.assertRaisesWithMessage('Element not basic type.', extract_element_basic, parent, 'ARTIST')
+    def test_extract_element_failure_wrong_type(self):
+        parent = xmltocsv.find_all_rec(self.tree.getroot(), 'CD')[0]
 
-    def test_extract_element_failure_not_list(self):
-        # Failure: sub-element is not type list ()
-        parent = find_all_rec(self.tree.getroot(), 'CD')[0]
-        self.assertRaisesWithMessage('Element not list type.', extract_element_list, self.tree.getroot(), 'CD', 'TRACK')
+        # Basic
+        self.assertRaises(WrongElementType, xmltocsv.extract_basic, parent, 'ARTIST')
+
+        # List
+        self.assertRaises(WrongElementType, xmltocsv.extract_list, self.tree.getroot(), 'CD', 'TRACK')
 
     def test_validate_extract_element(self):
-        parent = find_all_rec(self.tree.getroot(), 'CD')[0]
+        parent = xmltocsv.find_all_rec(self.tree.getroot(), 'CD')[0]
 
         # Does not exist
-        found_elements = find_all_rec(parent, 'NOT_THERE')
-        self.assertRaisesWithMessage('Element does not exist.', validate_extract_element, found_elements)
+        found_elements = xmltocsv.find_all_rec(parent, 'NOT_THERE')
+        self.assertRaises(MissingElement, xmltocsv.validate_extract_element, found_elements)
 
         # Duplicate tag
-        found_elements = find_all_rec(parent, 'SUBARTIST')
-        self.assertRaisesWithMessage('Duplicate extraction tag.', validate_extract_element, found_elements)
+        found_elements = xmltocsv.find_all_rec(parent, 'SUBARTIST')
+        self.assertRaises(AmbiguousElement, xmltocsv.validate_extract_element, found_elements)
